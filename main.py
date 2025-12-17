@@ -24,9 +24,12 @@ async def run_model(req: Request):
 
     prediction = predict(body)
 
-    supabase.table("return1_data").update(
-        {"fraud_label": prediction["fraud_prediction"]}
-    ).eq("order_id", order_id).execute()
+fraud_text = "fraud" if prediction["fraud_prediction"] == 1 else "not fraud"
+
+supabase.table("return1_data").update(
+    {"fraud_label": fraud_text}
+).eq("order_id", order_id).execute()
+
 
     return {
         "status": "ok",
