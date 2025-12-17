@@ -2,8 +2,12 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-COPY . .
-
+# Install dependencies first
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT}"]
+# Copy application code
+COPY . .
+
+# Start FastAPI (Cloud Run compatible)
+CMD exec uvicorn main:app --host 0.0.0.0 --port ${PORT}
