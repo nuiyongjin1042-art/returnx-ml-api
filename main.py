@@ -3,6 +3,9 @@ import os
 from supabase import create_client, Client
 from predict_pipeline import predict
 
+app = FastAPI()
+
+# Load env vars safely
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 
@@ -11,7 +14,11 @@ if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
-app = FastAPI()
+
+@app.get("/")
+def health():
+    return {"status": "ok"}
+
 
 @app.post("/run")
 async def run_model(req: Request):
@@ -24,15 +31,15 @@ async def run_model(req: Request):
 
     prediction = predict(body)
 
-fraud_text = "fraud" if prediction["fraud_prediction"] == 1 else "not fraud"
+    # Convert 0/1 → text
+    fraud_text = "fraud" if prediction["fraud_prediction"] == 1 else "not fraud"
 
-supabase.table("return1_data").update(
-    {"fraud_label": fraud_text}
-).eq("order_id", order_id).execute()
-
+    supabase.table("return1_data").update(
+        {"fraud_label": fraud_text}
+    ).eq("order_id", order_id).execute()
 
     return {
-        "status": "ok",
         "order_id": order_id,
-        "prediction": prediction
+        "fraud_label": fraud_text,
+        "probability": prediction["fraud_probability"]
     }
