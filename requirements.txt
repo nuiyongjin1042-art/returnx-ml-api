@@ -2,7 +2,8 @@ fastapi
 uvicorn
 numpy
 pandas
-scikit-learn==1.2.2
+scikit-learn
 xgboost
 joblib
 supabase
+
