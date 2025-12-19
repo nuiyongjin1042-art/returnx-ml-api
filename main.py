@@ -12,6 +12,4 @@ def health():
 @app.post("/predict")
 async def run_prediction(req: Request):
     data = await req.json()
-    result = predict(data)
-    return result
-
+    return predict(data)
