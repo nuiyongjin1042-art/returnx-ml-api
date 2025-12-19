@@ -1,65 +1,35 @@
-import os
-import json
-import pickle
 import numpy as np
 import pandas as pd
-from supabase import create_client
+import pickle
+import json
 
-# ============================
-# SUPABASE CONFIG
-# ============================
-SUPABASE_URL = os.environ["SUPABASE_URL"]
-SUPABASE_SERVICE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
-MODEL_BUCKET = "ml-models"   # <-- your Supabase Storage bucket name
-TMP_DIR = "/tmp"
+# ===============================
+# LOAD LOCAL MODEL ARTIFACTS
+# ===============================
 
-supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-
-
-# ============================
-# STORAGE HELPER
-# ============================
-def load_from_storage(filename):
-    """
-    Download file from Supabase Storage (once) and return local path.
-    Always write as binary.
-    """
-    local_path = os.path.join(TMP_DIR, filename)
-
-    if not os.path.exists(local_path):
-        print(f"Downloading {filename} from Supabase Storage...")
-        data = supabase.storage.from_(MODEL_BUCKET).download(filename)
-        with open(local_path, "wb") as f:
-            f.write(data)
-
-    return local_path
-
-
-# ============================
-# LOAD MODEL ARTIFACTS
-# ============================
-with open(load_from_storage("xgb_final_model.pkl"), "rb") as f:
+with open("xgb_final_model.pkl", "rb") as f:
     model = pickle.load(f)
 
-with open(load_from_storage("best_threshold.json"), "r") as f:
+with open("best_threshold.json", "r") as f:
     threshold = json.load(f)["best_threshold"]
 
-with open(load_from_storage("label_encoders.pkl"), "rb") as f:
+with open("label_encoders.pkl", "rb") as f:
     le_map = pickle.load(f)
 
-with open(load_from_storage("imputer.pkl"), "rb") as f:
+with open("imputer.pkl", "rb") as f:
     imputer = pickle.load(f)
 
-with open(load_from_storage("feature_order.json"), "r") as f:
+with open("feature_order.json", "r") as f:
     feature_order = json.load(f)
 
-with open(load_from_storage("price_bins.json"), "r") as f:
+with open("price_bins.json", "r") as f:
     price_bins_by_category = json.load(f)
 
 
-# ============================
-# CONSTANTS
-# ============================
+# ===============================
+# FEATURE CONFIG
+# ===============================
+
 CATEGORICAL_COLUMNS = [
     "category",
     "payment_method",
@@ -71,15 +41,16 @@ CATEGORICAL_COLUMNS = [
 ]
 
 
-# ============================
-# FEATURE ENGINEERING
-# ============================
+# ===============================
+# GROUPING FUNCTIONS
+# ===============================
+
 age_bins = [-np.inf, 24, 37, 50, 63, np.inf]
 age_labels = ["<25", "25-37", "38-50", "51-63", "64+"]
 
 
 def get_age_group(age):
-    return str(pd.cut([age], bins=age_bins, labels=age_labels, include_lowest=True)[0])
+    return str(pd.cut([age], bins=age_bins, labels=age_labels)[0])
 
 
 def get_discount_group(discount):
@@ -93,20 +64,21 @@ def get_discount_group(discount):
 
 def get_price_group(price, category):
     info = price_bins_by_category.get(category)
-    if info is None:
-        return "Unknown"
+    if not info:
+        return "Low"
 
     if info["type"] == "single_value":
         return "Low"
 
     bins = info["bins"]
     labels = ["Low", "Low", "Medium", "High", "Very High", "Very High"]
-    return str(pd.cut([price], bins=bins, labels=labels, include_lowest=True)[0])
+    return str(pd.cut([price], bins=bins, labels=labels)[0])
 
 
-# ============================
+# ===============================
 # PREPROCESS
-# ============================
+# ===============================
+
 def preprocess_input(data: dict):
     df = pd.DataFrame([data])
 
@@ -140,16 +112,15 @@ def preprocess_input(data: dict):
     return df
 
 
-# ============================
-# PREDICT
-# ============================
+# ===============================
+# PREDICTION
+# ===============================
+
 def predict(data: dict):
     X = preprocess_input(data)
-
     prob = model.predict_proba(X)[:, 1][0]
     pred = int(prob >= threshold)
 
     return {
-        "fraud_prediction": pred,
-        "fraud_label": "fraud" if pred == 1 else "not fraud",
+        "fraud_prediction": pred,   # 0 or 1
     }
