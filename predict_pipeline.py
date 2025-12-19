@@ -59,12 +59,27 @@ def get_discount_group(discount):
 
 def get_price_group(price, category):
     info = price_bins_by_category.get(category)
-    if not info:
+
+    if info is None:
+        return "Unknown"
+
+    group_type = info["type"]
+
+    if group_type == "single_value":
         return "Low"
 
-    bins = info.get("bins")
+    bins = info["bins"]
     labels = ["Low", "Low", "Medium", "High", "Very High", "Very High"]
-    return str(pd.cut([price], bins=bins, labels=labels)[0])
+
+    group = pd.cut(
+        [price],
+        bins=bins,
+        labels=labels,
+        include_lowest=True,
+        ordered=False   # 🔥 THIS IS THE FIX
+    )
+
+    return str(group[0])
 
 # ===============================
 # PREPROCESS
@@ -114,3 +129,4 @@ def predict(data: dict):
     return {
         "fraud_prediction": "fraud" if pred == 1 else "not fraud"
     }
+
