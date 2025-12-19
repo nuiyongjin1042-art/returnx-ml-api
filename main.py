@@ -1,15 +1,12 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from predict_pipeline import predict
 
 app = FastAPI()
 
-
 @app.get("/")
 def health():
-    return {"status": "ML API running"}
-
+    return {"status": "ok"}
 
 @app.post("/predict")
-async def run_prediction(req: Request):
-    data = await req.json()
-    return predict(data)
+def predict_api(payload: dict):
+    return predict(payload)
