@@ -1,95 +1,54 @@
 from fastapi import FastAPI, HTTPException
-import os, json, joblib
+import os
 from supabase import create_client
 from predict_pipeline import predict
 
-# ----------------------------
-# 1. Environment variables
-# ----------------------------
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
-MODEL_BUCKET = "ml-models"
+# ==========================================
+# SUPABASE CONFIG
+# ==========================================
 
-if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
-    raise RuntimeError("Missing Supabase env vars")
+SUPABASE_URL = os.environ["SUPABASE_URL"]
+SUPABASE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 
-# ----------------------------
-# 2. Supabase client (service role)
-# ----------------------------
-supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise RuntimeError("Supabase environment variables not set")
 
-# ----------------------------
-# 3. Download model files ONCE
-# ----------------------------
-def download_model_files():
-    files = [
-        "xgb_final_model.pkl",
-        "imputer.pkl",
-        "label_encoders.pkl",
-        "feature_order.json",
-        "price_bins.json",
-        "best_threshold.json"
-    ]
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-    for f in files:
-        print(f"Downloading {f} from Supabase Storage...")
-        data = supabase.storage.from_(MODEL_BUCKET).download(f)
-        with open(f, "wb") as out:
-            out.write(data)
+# ==========================================
+# FASTAPI APP
+# ==========================================
 
-download_model_files()
-
-# ----------------------------
-# 4. Load model into memory
-# ----------------------------
-model = joblib.load("xgb_final_model.pkl")
-imputer = joblib.load("imputer.pkl")
-label_encoders = joblib.load("label_encoders.pkl")
-
-with open("feature_order.json") as f:
-    feature_order = json.load(f)
-
-with open("price_bins.json") as f:
-    price_bins = json.load(f)
-
-with open("best_threshold.json") as f:
-    best_threshold = json.load(f)["best_threshold"]
-
-print("✅ Model loaded and ready")
-
-# ----------------------------
-# 5. FastAPI app
-# ----------------------------
 app = FastAPI()
+
+
+@app.get("/")
+def health_check():
+    return {"status": "ML API running"}
+
 
 @app.post("/predict")
 def run_prediction(payload: dict):
+    """
+    Receives order JSON, predicts fraud,
+    and updates fraud_label in Supabase.
+    """
     try:
-        order_id = payload["order_id"]
+        order_id = payload.get("order_id")
 
-        result = predict(
-            payload,
-            model=model,
-            imputer=imputer,
-            label_encoders=label_encoders,
-            feature_order=feature_order,
-            price_bins=price_bins,
-            threshold=best_threshold
-        )
+        if not order_id:
+            raise ValueError("order_id is required")
 
-        # Update Supabase
+        fraud_label = predict(payload)
+
         supabase.table("return1_data") \
-            .update({
-                "fraud_label": result["fraud_prediction"],
-                "fraud_probability": result["fraud_probability"]
-            }) \
+            .update({"fraud_label": fraud_label}) \
             .eq("order_id", order_id) \
             .execute()
 
         return {
-            "status": "ok",
             "order_id": order_id,
-            **result
+            "fraud_label": fraud_label
         }
 
     except Exception as e:
